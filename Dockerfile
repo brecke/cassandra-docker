@@ -1,3 +1,16 @@
+#
+# Forked and adapted from official cassandra image
+# available on https://hub.docker.com/_/cassandra/
+#
+
+#
+# Run image:
+#  docker run -it --name=cassandra --net=host -v /data/cassandra/:/var/lib/cassandra oaeproject/cassandra-docker
+#
+
+LABEL Name=Cassandra
+MAINTAINER Apereo Foundation <which.email@here.question>
+
 # vim:set ft=dockerfile:
 FROM debian:jessie-backports
 
