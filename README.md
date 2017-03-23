@@ -1,8 +1,21 @@
-# cassandra-docker
+# oae-cassandra-docker
+
 Regular cassandra 2.1 image with a slight CMD modification in order to run tests successfully.
 
 ## Usage
+
+### Run from dockerhub
+
 ```
 # replace /data/cassandra with your path on the host to mount the volume
 docker run -it --name=cassandra --net=host -v /data/cassandra/:/var/lib/cassandra oaeproject/cassandra-docker
+```
+
+### Build the image locally
+
+```
+# Step 1: Build the image
+docker build -f Dockerfile -t oae-cassandra:latest .
+# Step 2: Run image
+docker run -it --name=cassandra --net=host -v /data/cassandra/:/var/lib/cassandra oae-cassandra:latest
 ```

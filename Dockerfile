@@ -4,8 +4,10 @@
 #
 
 #
-# Run image:
-#  docker run -it --name=cassandra --net=host -v /data/cassandra/:/var/lib/cassandra oaeproject/cassandra-docker
+# Step 1: Build the image
+# $ docker build -f Dockerfile -t oae-cassandra:latest .
+# Step 2: Run image
+# $ docker run -it --name=cassandra --net=host -v /data/cassandra/:/var/lib/cassandra oae-cassandra:latest
 #
 
 FROM debian:jessie-backports
