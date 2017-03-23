@@ -8,11 +8,9 @@
 #  docker run -it --name=cassandra --net=host -v /data/cassandra/:/var/lib/cassandra oaeproject/cassandra-docker
 #
 
+FROM debian:jessie-backports
 LABEL Name=Cassandra
 MAINTAINER Apereo Foundation <which.email@here.question>
-
-# vim:set ft=dockerfile:
-FROM debian:jessie-backports
 
 # explicitly set user/group IDs
 RUN groupadd -r cassandra --gid=999 && useradd -r -g cassandra --uid=999 cassandra
@@ -79,6 +77,9 @@ RUN mkdir -p /var/lib/cassandra "$CASSANDRA_CONFIG" \
 	&& chmod 777 /var/lib/cassandra "$CASSANDRA_CONFIG"
 VOLUME /var/lib/cassandra
 
+# make it faster to drop keyspaces - OAE dev specific
+RUN cd /etc/cassandra/ && sed -i'' -e 's/auto_snapshot: true/auto_snapshot: false/g' cassandra.yaml
+
 # 7000: intra-node communication
 # 7001: TLS intra-node communication
 # 7199: JMX
@@ -86,4 +87,3 @@ VOLUME /var/lib/cassandra
 # 9160: thrift service
 EXPOSE 7000 7001 7199 9042 9160
 CMD ["cassandra", "-f", "JVM_OPTS='$JVM_OPTS -Dcassandra.unsafesystem=true'"]
-
