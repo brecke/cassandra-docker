@@ -81,6 +81,7 @@ VOLUME /var/lib/cassandra
 
 # make it faster to drop keyspaces - OAE dev specific
 RUN cd /etc/cassandra/ && sed -i'' -e 's/auto_snapshot: true/auto_snapshot: false/g' cassandra.yaml
+RUN echo 'batch_size_fail_threshold_in_kb: 500' >> /etc/cassandra/cassandra.yaml
 
 # 7000: intra-node communication
 # 7001: TLS intra-node communication
