@@ -1,92 +1,135 @@
 #
-# Forked and adapted from official cassandra image
-# available on https://hub.docker.com/_/cassandra/
+# Copyright 2017 Apereo Foundation (AF) Licensed under the
+# Educational Community License, Version 2.0 (the "License"); you may
+# not use this file except in compliance with the License. You may
+# obtain a copy of the License at
+#
+#     http://opensource.org/licenses/ECL-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an "AS IS"
+# BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+# or implied. See the License for the specific language governing
+# permissions and limitations under the License.
 #
 
 #
 # Step 1: Build the image
 # $ docker build -f Dockerfile -t oae-cassandra:latest .
 # Step 2: Run image
-# $ docker run -it --name=cassandra --net=host -v /data/cassandra/:/var/lib/cassandra oae-cassandra:latest
+# $ docker run -it --name=cassandra --net=host oae-cassandra:latest
+#
+FROM openjdk:8-jre-alpine
+LABEL Name=OAE-Cassandra 
+LABEL Author=ApereoFoundation 
+LABEL Email=oae@apereo.org
+
+#
+# Forked and adapted from official cassandra image
+# available on https://hub.docker.com/_/cassandra/
+# and
+# https://hub.docker.com/r/nebo15/alpine-cassandra/~/dockerfile/
 #
 
-FROM debian:jessie-backports
-LABEL Name=Cassandra
-MAINTAINER Apereo Foundation <which.email@here.question>
+# Important! Update this no-op ENV variable when this Dockerfile # is updated with the current date. It will force refresh of all # of the base images and things like `apt-get update` won't be using # old cached versions when the Dockerfile is built.
+ENV REFRESHED_AT=2016-10-14
+ENV	LANG=en_US.UTF-8 
+ENV	TERM=xterm
+ENV	HOME=/ 
+# Install gosu 
+ENV GOSU_VERSION=1.10 
+RUN set -x && \
+apk add --no-cache --virtual .gosu-deps \
+  dpkg \
+  gnupg \
+  openssl && \
+  dpkgArch="$(dpkg --print-architecture | awk -F- '{ print $NF }')" && \
+  wget -O /usr/local/bin/gosu "https://github.com/tianon/gosu/releases/download/$GOSU_VERSION/gosu-$dpkgArch" && \
+  wget -O /usr/local/bin/gosu.asc "https://github.com/tianon/gosu/releases/download/$GOSU_VERSION/gosu-$dpkgArch.asc" && \
+  export GNUPGHOME="$(mktemp -d)" && \
+  gpg --keyserver ha.pool.sks-keyservers.net --recv-keys B42F6819007F00F88E364FD4036A9C25BF357DD4 && \
+  gpg --batch --verify /usr/local/bin/gosu.asc /usr/local/bin/gosu && \
+  rm -r "$GNUPGHOME" /usr/local/bin/gosu.asc && \
+  chmod +x /usr/local/bin/gosu && \
+  gosu nobody true && \
+  apk --purge del .gosu-deps
 
-# explicitly set user/group IDs
-RUN groupadd -r cassandra --gid=999 && useradd -r -g cassandra --uid=999 cassandra
+# Install Cassandra 
+ENV CASSANDRA_VERSION=2.1.19
+ENV CASSANDRA_HOME=/opt/cassandra \
+  CASSANDRA_CONFIG=/etc/cassandra \ 
+  CASSANDRA_PERSIST_DIR=/var/lib/cassandra \ 
+  CASSANDRA_DATA=/var/lib/cassandra/data \ 
+  CASSANDRA_COMMITLOG=/var/lib/cassandra/commitlog \ 
+  CASSANDRA_LOG=/var/log/cassandra \ 
+  CASSANDRA_USER=cassandra 
 
-# grab gosu for easy step-down from root
-ENV GOSU_VERSION 1.7
-RUN set -x \
-	&& apt-get update && apt-get install -y --no-install-recommends ca-certificates wget && rm -rf /var/lib/apt/lists/* \
-	&& wget -O /usr/local/bin/gosu "https://github.com/tianon/gosu/releases/download/$GOSU_VERSION/gosu-$(dpkg --print-architecture)" \
-	&& wget -O /usr/local/bin/gosu.asc "https://github.com/tianon/gosu/releases/download/$GOSU_VERSION/gosu-$(dpkg --print-architecture).asc" \
-	&& export GNUPGHOME="$(mktemp -d)" \
-	&& gpg --keyserver ha.pool.sks-keyservers.net --recv-keys B42F6819007F00F88E364FD4036A9C25BF357DD4 \
-	&& gpg --batch --verify /usr/local/bin/gosu.asc /usr/local/bin/gosu \
-	&& rm -r "$GNUPGHOME" /usr/local/bin/gosu.asc \
-	&& chmod +x /usr/local/bin/gosu \
-	&& gosu nobody true \
-	&& apt-get purge -y --auto-remove ca-certificates wget
+## Create data directories that should be used by Cassandra 
+RUN mkdir -p ${CASSANDRA_DATA} \
+  ${CASSANDRA_HOME} \
+  ${CASSANDRA_CONFIG} \
+  ${CASSANDRA_LOG} \
+  ${CASSANDRA_COMMITLOG}
 
-# solves warning: "jemalloc shared library could not be preloaded to speed up memory allocations"
-RUN apt-get update && apt-get install -y --no-install-recommends libjemalloc1 && rm -rf /var/lib/apt/lists/*
+### Apache Cassandra 
+RUN apk --update --no-cache add wget ca-certificates tar && \
+  wget http://artfiles.org/apache.org/cassandra/${CASSANDRA_VERSION}/apache-cassandra-${CASSANDRA_VERSION}-bin.tar.gz -P /tmp && \
+  tar -xvzf /tmp/apache-cassandra-${CASSANDRA_VERSION}-bin.tar.gz -C /tmp/ && \
+  mv /tmp/apache-cassandra-${CASSANDRA_VERSION} ${CASSANDRA_HOME} && \
+  rm -rf /tmp/apache-cassandra-${CASSANDRA_VERSION}-bin.tar.gz && \
+  apk --purge del wget ca-certificates tar && \
+  rm -rf /var/cache/apk/*
 
-# https://github.com/docker-library/cassandra/pull/98#issuecomment-280761137
-RUN { \
-		echo 'Package: openjdk-* ca-certificates-java'; \
-		echo 'Pin: release n=*-backports'; \
-		echo 'Pin-Priority: 990'; \
-	} > /etc/apt/preferences.d/java-backports
+# Setup entrypoint and bash to execute it 
+COPY docker-entrypoint.sh /docker-entrypoint.sh
+RUN apk add --update --no-cache bash && \
+  chmod +x /docker-entrypoint.sh
+ENTRYPOINT ["/bin/bash", "/docker-entrypoint.sh"]
 
-# https://wiki.apache.org/cassandra/DebianPackaging#Adding_Repository_Keys
-ENV GPG_KEYS \
-# gpg: key 0353B12C: public key "T Jake Luciani <jake@apache.org>" imported
-	514A2AD631A57A16DD0047EC749D6EEC0353B12C \
-# gpg: key FE4B2BDA: public key "Michael Shuler <michael@pbandjelly.org>" imported
-	A26E528B271F19B9E5D8E19EA278B781FE4B2BDA
-RUN set -ex; \
-	export GNUPGHOME="$(mktemp -d)"; \
-	for key in $GPG_KEYS; do \
-		gpg --keyserver ha.pool.sks-keyservers.net --recv-keys "$key"; \
-	done; \
-	gpg --export $GPG_KEYS > /etc/apt/trusted.gpg.d/cassandra.gpg; \
-	rm -r "$GNUPGHOME"; \
-	apt-key list
+# Change CASSANDRA_HOME ENV var to the correct folder
+ENV CASSANDRA_HOME=/opt/cassandra/apache-cassandra-${CASSANDRA_VERSION} 
 
-RUN echo 'deb http://www.apache.org/dist/cassandra/debian 21x main' >> /etc/apt/sources.list.d/cassandra.list
+# Add default config 
+RUN mv ${CASSANDRA_HOME}/conf/* ${CASSANDRA_CONFIG}
+# COPY ./conf/* ${CASSANDRA_CONFIG}/
+RUN chmod +x ${CASSANDRA_CONFIG}/*.sh
 
-ENV CASSANDRA_VERSION 2.1.17
-
-RUN apt-get update \
-	&& apt-get install -y \
-		cassandra="$CASSANDRA_VERSION" \
-		cassandra-tools="$CASSANDRA_VERSION" \
-	&& rm -rf /var/lib/apt/lists/*
-
-# https://issues.apache.org/jira/browse/CASSANDRA-11661
+# https://issues.apache.org/jira/browse/CASSANDRA-11661 
 RUN sed -ri 's/^(JVM_PATCH_VERSION)=.*/\1=25/' /etc/cassandra/cassandra-env.sh
 
-ENV CASSANDRA_CONFIG /etc/cassandra
+# Add cassandra bin to PATH 
+ENV PATH=$PATH:${CASSANDRA_HOME}/bin \ 
+  CASSANDRA_CONF=${CASSANDRA_CONFIG} 
+  
+# Change directories ownership and access rights 
+RUN adduser -D -s /bin/sh ${CASSANDRA_USER} && \
+  chown -R ${CASSANDRA_USER}:${CASSANDRA_USER} ${CASSANDRA_HOME} \
+  ${CASSANDRA_PERSIST_DIR} \
+  ${CASSANDRA_DATA} \
+  ${CASSANDRA_CONFIG} \
+  ${CASSANDRA_LOG} \
+  ${CASSANDRA_COMMITLOG} && \
+  chmod 777 ${CASSANDRA_HOME} \
+  ${CASSANDRA_PERSIST_DIR} \
+  ${CASSANDRA_DATA} \
+  ${CASSANDRA_CONFIG} \
+  ${CASSANDRA_LOG} \
+  ${CASSANDRA_COMMITLOG}
+USER ${CASSANDRA_USER} 
+WORKDIR ${CASSANDRA_HOME}
 
-COPY docker-entrypoint.sh /docker-entrypoint.sh
-ENTRYPOINT ["/docker-entrypoint.sh"]
+# Expose data volume 
+VOLUME ${CASSANDRA_PERSIST_DIR}
 
-RUN mkdir -p /var/lib/cassandra "$CASSANDRA_CONFIG" \
-	&& chown -R cassandra:cassandra /var/lib/cassandra "$CASSANDRA_CONFIG" \
-	&& chmod 777 /var/lib/cassandra "$CASSANDRA_CONFIG"
-VOLUME /var/lib/cassandra
+# 7000: intra-node communication 
+# 7001: TLS intra-node communication 
+# 7199: JMX 
+# 9042: CQL 
+# 9160: thrift service 
+EXPOSE 7000 7001 7199 9042 9160 
 
-# make it faster to drop keyspaces - OAE dev specific
-RUN cd /etc/cassandra/ && sed -i'' -e 's/auto_snapshot: true/auto_snapshot: false/g' cassandra.yaml
-RUN echo 'batch_size_fail_threshold_in_kb: 500' >> /etc/cassandra/cassandra.yaml
+# debug
+RUN ls -la ${CASSANDRA_HOME}/bin
+# RUN echo $PATH
 
-# 7000: intra-node communication
-# 7001: TLS intra-node communication
-# 7199: JMX
-# 9042: CQL
-# 9160: thrift service
-EXPOSE 7000 7001 7199 9042 9160
 CMD ["cassandra", "-f", "JVM_OPTS='$JVM_OPTS -Dcassandra.unsafesystem=true'"]
